@@ -1,0 +1,12 @@
+CREATE TABLE task_assignments (
+    task_id VARCHAR(20) PRIMARY KEY,
+    provider_id VARCHAR(10),
+    task_type VARCHAR(50), -- Chart review, Phone call, Prior auth, Lab review
+    priority VARCHAR(10), -- Routine, Urgent, STAT
+    assigned_date TIMESTAMP,
+    due_date TIMESTAMP,
+    status VARCHAR(20), -- Pending, In Progress, Completed, Reassigned
+    estimated_minutes INT,
+    reassigned_to VARCHAR(10), -- NULL if not reassigned
+    FOREIGN KEY (provider_id) REFERENCES providers(provider_id)
+);
