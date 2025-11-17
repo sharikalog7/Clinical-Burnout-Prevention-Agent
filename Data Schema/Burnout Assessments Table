@@ -1,0 +1,11 @@
+CREATE TABLE burnout_assessments (
+    assessment_id VARCHAR(20) PRIMARY KEY,
+    provider_id VARCHAR(10),
+    assessment_date DATE,
+    emotional_exhaustion_score INT, -- 0-100
+    depersonalization_score INT,
+    personal_accomplishment_score INT,
+    overall_burnout_score INT, -- Composite 0-100
+    self_reported_status VARCHAR(20), -- Low, Medium, High, Critical
+    FOREIGN KEY (provider_id) REFERENCES providers(provider_id)
+);
