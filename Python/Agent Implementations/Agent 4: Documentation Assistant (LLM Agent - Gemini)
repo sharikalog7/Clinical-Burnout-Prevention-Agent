@@ -1,0 +1,138 @@
+from google.adk import Agent, Tool
+import google.generativeai as genai
+
+# Custom Tool: SOAP Note Parser
+class SOAPNoteParser(Tool):
+    """Extracts SOAP components from encounter transcript"""
+    
+    def __init__(self):
+        super().__init__(
+            name="soap_parser",
+            description="Parses clinical encounter text into SOAP format"
+        )
+    
+    async def execute(self, encounter_transcript: str):
+        """
+        Extract SOAP components using regex/NLP
+        
+        Args:
+            encounter_transcript: Raw encounter notes
+        
+        Returns:
+            Structured SOAP dict
+        """
+        # Simplified parser (real version would use medical NLP)
+        soap = {
+            'subjective': '',
+            'objective': '',
+            'assessment': '',
+            'plan': ''
+        }
+        
+        # Use simple keyword detection
+        lines = encounter_transcript.split('\n')
+        current_section = 'subjective'
+        
+        for line in lines:
+            if 'objective' in line.lower() or 'vitals' in line.lower():
+                current_section = 'objective'
+            elif 'assessment' in line.lower() or 'diagnosis' in line.lower():
+                current_section = 'assessment'
+            elif 'plan' in line.lower() or 'treatment' in line.lower():
+                current_section = 'plan'
+            else:
+                soap[current_section] += line + '\n'
+        
+        return soap
+
+# Documentation Assistant Agent (Gemini-powered)
+class DocumentationAssistantAgent:
+    def __init__(self):
+        self.soap_parser = SOAPNoteParser()
+        
+        # Configure Gemini
+        genai.configure(api_key='YOUR_API_KEY')
+        
+        self.agent = Agent(
+            name="documentation_assistant",
+            model="gemini-2.0-flash",
+            description="Auto-generates clinical documentation from encounter notes",
+            tools=[self.soap_parser],
+            system_instruction="""
+            You are a medical documentation assistant. Your role is to:
+            1. Parse clinical encounter notes
+            2. Generate complete, compliant SOAP notes
+            3. Ensure all regulatory requirements are met (HIPAA, billing codes)
+            4. Maintain clinical accuracy and professional tone
+            
+            Always structure notes as:
+            - Subjective (patient's perspective)
+            - Objective (clinical findings)
+            - Assessment (diagnosis)
+            - Plan (treatment)
+            """
+        )
+    
+    async def generate_documentation(self, encounter_id: str, transcript: str):
+        """
+        Generate complete clinical note
+        
+        Args:
+            encounter_id: Encounter identifier
+            transcript: Raw encounter transcript/bullet points
+        
+        Returns:
+            Complete formatted SOAP note
+        """
+        # Parse components
+        soap_components = await self.soap_parser.execute(transcript)
+        
+        # Use Gemini to enhance and format
+        prompt = f"""
+        Based on this encounter transcript, generate a complete clinical note:
+        
+        Encounter ID: {encounter_id}
+        
+        Raw notes:
+        {transcript}
+        
+        Parsed components:
+        Subjective: {soap_components['subjective']}
+        Objective: {soap_components['objective']}
+        Assessment: {soap_components['assessment']}
+        Plan: {soap_components['plan']}
+        
+        Generate a professional, complete SOAP note suitable for the medical record.
+        Include appropriate medical terminology and ensure compliance standards.
+        """
+        
+        response = await self.agent.chat(prompt)
+        
+        return {
+            'encounter_id': encounter_id,
+            'generated_note': response.text,
+            'timestamp': datetime.now().isoformat(),
+            'time_saved_minutes': 15  # Estimated from 20min manual → 5min review
+        }
+
+# Usage
+if __name__ == '__main__':
+    import asyncio
+    
+    doc_assistant = DocumentationAssistantAgent()
+    
+    sample_transcript = """
+    Patient: 45yo F presents with chest pain x 2 days
+    PMH: HTN, DM2
+    Vitals: BP 145/90, HR 88, RR 16, Temp 98.6
+    Exam: Heart RRR no murmurs, lungs clear
+    Assessment: Likely costochondritis vs cardiac eval needed
+    Plan: EKG, troponin, f/u cardiology, NSAIDs prn
+    """
+    
+    result = asyncio.run(doc_assistant.generate_documentation(
+        encounter_id='ENC00012345',
+        transcript=sample_transcript
+    ))
+    
+    print(result['generated_note'])
