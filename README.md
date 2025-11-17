@@ -301,5 +301,3 @@ MIT License - See LICENSE file
 ---
 
 **Built with ❤️ for healthcare workers everywhere.**
-```
-
