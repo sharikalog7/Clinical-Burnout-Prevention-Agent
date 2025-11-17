@@ -1,0 +1,21 @@
+# 1. Install Google Cloud SDK
+gcloud components install agent-engine
+
+# 2. Package agent code
+# File: agent_config.yaml
+name: clinical-burnout-prevention-agent
+runtime: python311
+entrypoint: main.py
+environment_variables:
+  GEMINI_API_KEY: ${GEMINI_API_KEY}
+  EHR_API_ENDPOINT: ${EHR_API_ENDPOINT}
+
+# 3. Deploy to Agent Engine
+gcloud agent-engine deploy \
+  --config=agent_config.yaml \
+  --region=us-central1 \
+  --memory=2Gi \
+  --cpu=1
+
+# 4. Monitor deployment
+gcloud agent-engine logs tail clinical-burnout-prevention-agent
