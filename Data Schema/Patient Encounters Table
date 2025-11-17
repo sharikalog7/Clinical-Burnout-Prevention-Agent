@@ -1,0 +1,12 @@
+CREATE TABLE patient_encounters (
+    encounter_id VARCHAR(20) PRIMARY KEY,
+    provider_id VARCHAR(10),
+    patient_id VARCHAR(10),
+    encounter_date DATE,
+    encounter_time TIME,
+    duration_minutes INT,
+    acuity_level VARCHAR(10), -- Low, Medium, High, Critical
+    encounter_type VARCHAR(50), -- Office visit, Procedure, Consult
+    documentation_time_minutes INT,
+    FOREIGN KEY (provider_id) REFERENCES providers(provider_id)
+);
