@@ -1,0 +1,209 @@
+from google.adk import Agent, Tool
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+import pandas as pd
+import numpy as np
+import joblib
+
+# Custom Tool: ML Burnout Model
+class BurnoutPredictionModel(Tool):
+    """Machine learning model to predict burnout risk"""
+    
+    def __init__(self):
+        super().__init__(
+            name="burnout_predictor",
+            description="Predicts burnout risk score (0-100) based on workload patterns"
+        )
+        self.model = None
+        self._train_model()
+    
+    def _train_model(self):
+        """Train Random Forest model on historical burnout data"""
+        # Load training data
+        workload = pd.read_csv('data/workload_metrics.csv')
+        assessments = pd.read_csv('data/burnout_assessments.csv')
+        
+        # Merge workload data with burnout scores
+        # For each assessment, use average workload from prior 2 weeks
+        training_data = []
+        
+        for _, assessment in assessments.iterrows():
+            provider_id = assessment['provider_id']
+            assessment_date = pd.to_datetime(assessment['assessment_date'])
+            
+            # Get 14 days of workload prior to assessment
+            lookback_start = assessment_date - pd.Timedelta(days=14)
+            workload_window = workload[
+                (workload['provider_id'] == provider_id) &
+                (pd.to_datetime(workload['date']) >= lookback_start) &
+                (pd.to_datetime(workload['date']) < assessment_date)
+            ]
+            
+            if len(workload_window) < 5:  # Need sufficient data
+                continue
+            
+            # Feature engineering
+            features = {
+                'avg_patient_count': workload_window['patient_count'].mean(),
+                'max_patient_count': workload_window['patient_count'].max(),
+                'avg_clinical_hours': workload_window['total_clinical_hours'].mean(),
+                'total_after_hours': workload_window['after_hours_minutes'].sum(),
+                'avg_doc_time': workload_window['documentation_time_minutes'].mean(),
+                'total_missed_breaks': workload_window['missed_breaks'].sum(),
+                'avg_email_count': workload_window['email_count'].mean(),
+                'max_inbox_delay': workload_window['inbox_response_time_hours'].max(),
+                'workload_variability': workload_window['patient_count'].std(),
+                'target': assessment['overall_burnout_score']
+            }
+            
+            training_data.append(features)
+        
+        # Convert to DataFrame
+        df = pd.DataFrame(training_data)
+        
+        # Train/test split
+        X = df.drop('target', axis=1)
+        y = df['target']
+        
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.2, random_state=42
+        )
+        
+        # Train Random Forest
+        self.model = RandomForestClassifier(
+            n_estimators=100,
+            max_depth=10,
+            random_state=42
+        )
+        self.model.fit(X_train, y_train)
+        
+        # Evaluate
+        train_score = self.model.score(X_train, y_train)
+        test_score = self.model.score(X_test, y_test)
+        
+        print(f"✓ Burnout model trained: Train R²={train_score:.3f}, Test R²={test_score:.3f}")
+        
+        # Save model
+        joblib.dump(self.model, 'models/burnout_predictor.pkl')
+    
+    async def execute(self, provider_id: str, workload_history: dict):
+        """
+        Predict burnout risk from recent workload
+        
+        Args:
+            provider_id: Provider identifier
+            workload_history: Dictionary with 14-day workload metrics
+        
+        Returns:
+            Prediction dict with risk score and category
+        """
+        # Extract features
+        features = pd.DataFrame([{
+            'avg_patient_count': workload_history['avg_patient_count'],
+            'max_patient_count': workload_history['max_patient_count'],
+            'avg_clinical_hours': workload_history['avg_clinical_hours'],
+            'total_after_hours': workload_history['total_after_hours'],
+            'avg_doc_time': workload_history['avg_doc_time'],
+            'total_missed_breaks': workload_history['total_missed_breaks'],
+            'avg_email_count': workload_history['avg_email_count'],
+            'max_inbox_delay': workload_history['max_inbox_delay'],
+            'workload_variability': workload_history['workload_variability']
+        }])
+        
+        # Predict
+        risk_score = int(self.model.predict(features)[0])
+        
+        # Categorize
+        if risk_score < 40:
+            category = 'Low'
+            recommendation = 'Routine monitoring'
+        elif risk_score < 70:
+            category = 'Medium'
+            recommendation = 'Increased monitoring, consider workload adjustment'
+        elif risk_score < 85:
+            category = 'High'
+            recommendation = 'Immediate intervention required'
+        else:
+            category = 'Critical'
+            recommendation = 'Urgent intervention - activate all support measures'
+        
+        return {
+            'provider_id': provider_id,
+            'risk_score': risk_score,
+            'risk_category': category,
+            'recommendation': recommendation,
+            'timestamp': datetime.now().isoformat()
+        }
+
+# Burnout Predictor Agent (Sequential)
+class BurnoutPredictorAgent:
+    def __init__(self, memory_bank: MemoryBank):
+        self.memory_bank = memory_bank
+        self.predictor_tool = BurnoutPredictionModel()
+        
+        self.agent = Agent(
+            name="burnout_predictor",
+            model="gemini-1.5-pro",
+            description="Predicts burnout risk from workload patterns",
+            tools=[self.predictor_tool]
+        )
+    
+    async def predict_risk(self, provider_id: str) -> dict:
+        """
+        Sequential pipeline:
+        1. Retrieve 14-day workload history from Memory Bank
+        2. Calculate aggregate features
+        3. Run ML prediction
+        4. Generate recommendation
+        """
+        # Step 1: Retrieve historical data
+        workload_records = await self.memory_bank.retrieve(
+            filter={'provider_id': provider_id, 'type': 'daily_workload'},
+            limit=14
+        )
+        
+        if len(workload_records) < 5:
+            return {
+                'provider_id': provider_id,
+                'error': 'Insufficient data for prediction',
+                'risk_score': None
+            }
+        
+        # Step 2: Aggregate features
+        df = pd.DataFrame([r['value'] for r in workload_records])
+        
+        workload_history = {
+            'avg_patient_count': df['patient_count_24h'].mean(),
+            'max_patient_count': df['patient_count_24h'].max(),
+            'avg_clinical_hours': df['patient_count_24h'].mean() * 0.5,  # Estimate
+            'total_after_hours': df['patient_count_24h'].sum() * 2,  # Estimate
+            'avg_doc_time': df['total_doc_time_minutes'].mean(),
+            'total_missed_breaks': max(0, (df['patient_count_24h'] > 20).sum()),
+            'avg_email_count': df['patient_count_24h'].mean() * 2,  # Estimate
+            'max_inbox_delay': 12,  # Placeholder
+            'workload_variability': df['patient_count_24h'].std()
+        }
+        
+        # Step 3: Predict
+        prediction = await self.predictor_tool.execute(provider_id, workload_history)
+        
+        # Step 4: Store prediction in Memory Bank
+        await self.memory_bank.store(
+            key=f"prediction_{provider_id}_{datetime.now().date()}",
+            value=prediction,
+            metadata={'provider_id': provider_id, 'type': 'burnout_prediction'}
+        )
+        
+        return prediction
+
+# Usage
+if __name__ == '__main__':
+    import asyncio
+    from google.adk.memory import MemoryBank
+    
+    memory = MemoryBank(retention_days=90)
+    predictor = BurnoutPredictorAgent(memory)
+    
+    # Predict for a provider
+    result = asyncio.run(predictor.predict_risk('PROV0001'))
+    print(f"Burnout Prediction: {result}")
