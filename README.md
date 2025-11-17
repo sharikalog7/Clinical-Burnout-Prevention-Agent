@@ -280,8 +280,7 @@ MIT License - See LICENSE file
 
 ## 👥 Team
 
-- **Your Name** - Project Lead, Data Architecture, Agent Development
-- (Add team members if applicable)
+- **Your Name** -Sharika Loganathan
 
 ---
 
@@ -297,7 +296,7 @@ MIT License - See LICENSE file
 
 - GitHub: [@sharikalog7](https://github.com/sharikalog7)
 - LinkedIn: [Sharika Loganathan LinkedIn](https://linkedin.com/in/sharikalog7)
-- Email: your.email@example.com
+- Email: sharika.loganathan@gmail.com
 
 ---
 
