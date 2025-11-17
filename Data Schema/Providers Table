@@ -1,0 +1,9 @@
+CREATE TABLE providers (
+    provider_id VARCHAR(10) PRIMARY KEY,
+    name VARCHAR(100),
+    specialty VARCHAR(50),
+    department VARCHAR(50),
+    fte DECIMAL(3,2), -- Full-time equivalent (0.5 = part-time)
+    hire_date DATE,
+    baseline_capacity INT -- Max patients per day
+);
