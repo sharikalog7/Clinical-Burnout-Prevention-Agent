@@ -1,0 +1,137 @@
+from google.adk import Agent, Tool
+from google.adk.sessions import InMemorySessionService
+from google.adk.memory import MemoryBank
+import pandas as pd
+from datetime import datetime, timedelta
+
+# Custom Tool: EHR Data Fetcher
+class EHRDataFetcher(Tool):
+    """Fetches workload data from synthetic EHR database"""
+    
+    def __init__(self):
+        super().__init__(
+            name="ehr_data_fetcher",
+            description="Retrieves patient schedules, encounter logs, and task assignments from EHR"
+        )
+    
+    async def execute(self, provider_id: str, lookback_hours: int = 24):
+        """
+        Fetch recent workload data for a provider
+        
+        Args:
+            provider_id: Provider identifier
+            lookback_hours: Hours to look back from current time
+        
+        Returns:
+            Dictionary with workload metrics
+        """
+        # Load data (in production, this would be API calls)
+        encounters = pd.read_csv('data/encounters.csv')
+        tasks = pd.read_csv('data/tasks.csv')
+        
+        # Filter to recent data for this provider
+        cutoff_time = datetime.now() - timedelta(hours=lookback_hours)
+        
+        provider_encounters = encounters[
+            (encounters['provider_id'] == provider_id) &
+            (pd.to_datetime(encounters['encounter_date']) >= cutoff_time)
+        ]
+        
+        provider_tasks = tasks[
+            (tasks['provider_id'] == provider_id) &
+            (pd.to_datetime(tasks['assigned_date']) >= cutoff_time) &
+            (tasks['status'] == 'Pending')
+        ]
+        
+        # Calculate metrics
+        metrics = {
+            'provider_id': provider_id,
+            'timestamp': datetime.now().isoformat(),
+            'patient_count_24h': len(provider_encounters),
+            'total_doc_time_minutes': provider_encounters['documentation_time_minutes'].sum(),
+            'pending_tasks': len(provider_tasks),
+            'urgent_tasks': len(provider_tasks[provider_tasks['priority'] == 'Urgent']),
+            'stat_tasks': len(provider_tasks[provider_tasks['priority'] == 'STAT']),
+            'estimated_task_burden_minutes': provider_tasks['estimated_minutes'].sum()
+        }
+        
+        return metrics
+
+# Workload Monitor Agent
+class WorkloadMonitorAgent:
+    def __init__(self):
+        self.session_service = InMemorySessionService()
+        self.memory_bank = MemoryBank(retention_days=90)
+        self.ehr_fetcher = EHRDataFetcher()
+        
+        self.agent = Agent(
+            name="workload_monitor",
+            model="gemini-2.0-flash",
+            description="Monitors clinician workload patterns in real-time",
+            tools=[self.ehr_fetcher],
+            session_service=self.session_service
+        )
+    
+    async def monitor_loop(self, provider_ids: list, interval_hours: int = 1):
+        """
+        Loop agent that continuously monitors workload
+        
+        Args:
+            provider_ids: List of provider IDs to monitor
+            interval_hours: How often to check (default: hourly)
+        """
+        while True:
+            for provider_id in provider_ids:
+                # Fetch current workload
+                workload_data = await self.ehr_fetcher.execute(
+                    provider_id=provider_id,
+                    lookback_hours=24
+                )
+                
+                # Store in Memory Bank for historical tracking
+                await self.memory_bank.store(
+                    key=f"workload_{provider_id}_{datetime.now().date()}",
+                    value=workload_data,
+                    metadata={
+                        'provider_id': provider_id,
+                        'type': 'daily_workload'
+                    }
+                )
+                
+                # Calculate rolling averages for context
+                historical_data = await self.memory_bank.retrieve(
+                    filter={'provider_id': provider_id, 'type': 'daily_workload'},
+                    limit=30  # Last 30 days
+                )
+                
+                # Compact context: daily → weekly summary
+                weekly_summary = self._compact_to_weekly(historical_data)
+                
+                print(f"✓ Monitored {provider_id}: {workload_data['patient_count_24h']} patients, "
+                      f"{workload_data['pending_tasks']} pending tasks")
+            
+            # Sleep until next interval
+            await asyncio.sleep(interval_hours * 3600)
+    
+    def _compact_to_weekly(self, daily_data: list) -> dict:
+        """Context compaction: Summarize daily data into weekly trends"""
+        df = pd.DataFrame(daily_data)
+        
+        return {
+            'avg_daily_patients': df['patient_count_24h'].mean(),
+            'avg_doc_time': df['total_doc_time_minutes'].mean(),
+            'avg_pending_tasks': df['pending_tasks'].mean(),
+            'trend': 'increasing' if df['patient_count_24h'].tail(7).mean() > 
+                                     df['patient_count_24h'].head(7).mean() else 'stable'
+        }
+
+# Usage
+if __name__ == '__main__':
+    import asyncio
+    
+    monitor = WorkloadMonitorAgent()
+    
+    # Monitor all providers hourly
+    providers = pd.read_csv('data/providers.csv')['provider_id'].tolist()
+    
+    asyncio.run(monitor.monitor_loop(providers, interval_hours=1))
