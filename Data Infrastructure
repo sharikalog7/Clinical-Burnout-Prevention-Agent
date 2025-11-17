@@ -1,0 +1,9 @@
+Synthetic Data Generation:
+- Faker (generate provider names, demographics)
+- Custom scripts (realistic EHR schedule patterns)
+- Historical burnout survey data (anonymized real patterns)
+
+Storage:
+- SQLite (local development)
+- Google Cloud SQL (deployment)
+- Memory Bank (ADK built-in for workload history)
