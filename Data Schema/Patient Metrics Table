@@ -1,0 +1,13 @@
+CREATE TABLE workload_metrics (
+    metric_id VARCHAR(20) PRIMARY KEY,
+    provider_id VARCHAR(10),
+    date DATE,
+    patient_count INT,
+    total_clinical_hours DECIMAL(4,2),
+    documentation_time_minutes INT,
+    after_hours_minutes INT, -- Work done after 6pm
+    missed_breaks INT,
+    email_count INT,
+    inbox_response_time_hours DECIMAL(4,2),
+    FOREIGN KEY (provider_id) REFERENCES providers(provider_id)
+);
