@@ -295,8 +295,8 @@ MIT License - See LICENSE file
 
 ## 📞 Contact
 
-- GitHub: [@yourusername](https://github.com/yourusername)
-- LinkedIn: [Your LinkedIn](https://linkedin.com/in/yourprofile)
+- GitHub: [@sharikalog7](https://github.com/sharikalog7)
+- LinkedIn: [Sharika Loganathan LinkedIn](https://linkedin.com/in/sharikalog7)
 - Email: your.email@example.com
 
 ---
