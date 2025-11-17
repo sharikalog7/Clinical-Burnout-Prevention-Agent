@@ -1,0 +1,14 @@
+# Primary Framework
+ADK-Python (Google Agent Development Kit)
+
+# LLM Provider
+Gemini 2.0 Flash (for Documentation Assistant)
+Gemini 1.5 Pro (for complex reasoning in Intervention Coordinator)
+
+# Supporting Libraries
+- pandas (data processing)
+- scikit-learn (ML model for burnout prediction)
+- numpy (numerical operations)
+- opentelemetry-sdk (tracing)
+- prometheus-client (metrics)
+- google-cloud-logging (audit logs)
