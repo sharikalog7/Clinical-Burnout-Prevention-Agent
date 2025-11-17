@@ -1,0 +1,112 @@
+from google.adk import Agent, Tool
+from google.adk.tools import MCPTool
+import pandas as pd
+from datetime import datetime
+
+# Custom Tool: Task Assignment API
+class TaskAssignmentAPI(Tool):
+    """Reassigns tasks between providers"""
+    
+    def __init__(self):
+        super().__init__(
+            name="task_reassignment",
+            description="Reassigns non-critical tasks from high-risk to lower-load providers"
+        )
+    
+    async def execute(self, task_ids: list, from_provider: str, to_provider: str):
+        """
+        Reassign tasks
+        
+        Args:
+            task_ids: List of task IDs to reassign
+            from_provider: Source provider
+            to_provider: Destination provider
+        
+        Returns:
+            Reassignment summary
+        """
+        # Load tasks
+        tasks = pd.read_csv('data/tasks.csv')
+        
+        # Update tasks
+        for task_id in task_ids:
+            tasks.loc[tasks['task_id'] == task_id, 'reassigned_to'] = to_provider
+            tasks.loc[tasks['task_id'] == task_id, 'status'] = 'Reassigned'
+        
+        # Save
+        tasks.to_csv('data/tasks.csv', index=False)
+        
+        return {
+            'success': True,
+            'tasks_reassigned': len(task_ids),
+            'from_provider': from_provider,
+            'to_provider': to_provider,
+            'timestamp': datetime.now().isoformat()
+        }
+
+# Task Redistributor Agent (Parallel)
+class TaskRedistributorAgent:
+    def __init__(self):
+        self.task_api = TaskAssignmentAPI()
+        self.calendar_mcp = MCPTool("calendar_integration")  # MCP for scheduling
+        
+        self.agent = Agent(
+            name="task_redistributor",
+            model="gemini-2.0-flash",
+            description="Redistributes tasks to balance workload",
+            tools=[self.task_api, self.calendar_mcp]
+        )
+    
+    async def redistribute_workload(self, high_risk_provider: str, available_providers: list):
+        """
+        Parallel execution:
+        1. Identify deferrable tasks from high-risk provider
+        2. Find best candidate providers (parallel analysis)
+        3. Reassign tasks
+        4. Update calendars via MCP
+        """
+        # Load tasks
+        tasks = pd.read_csv('data/tasks.csv')
+        
+        # Find deferrable tasks (Routine priority, not STAT/Urgent)
+        provider_tasks = tasks[
+            (tasks['provider_id'] == high_risk_provider) &
+            (tasks['status'] == 'Pending') &
+            (tasks['priority'] == 'Routine')
+        ]
+        
+        # Sort by due date (defer furthest deadlines first)
+        deferrable = provider_tasks.sort_values('due_date', ascending=False).head(10)
+        
+        # Parallel: Find best target providers
+        # (In real implementation, this would analyze each provider's capacity in parallel)
+        target_provider = available_providers[0]  # Simplified
+        
+        # Reassign
+        result = await self.task_api.execute(
+            task_ids=deferrable['task_id'].tolist(),
+            from_provider=high_risk_provider,
+            to_provider=target_provider
+        )
+        
+        # Update calendars via MCP
+        await self.calendar_mcp.execute({
+            'action': 'block_time',
+            'provider_id': target_provider,
+            'tasks': deferrable[['task_id', 'task_type', 'estimated_minutes']].to_dict('records')
+        })
+        
+        return result
+
+# Usage
+if __name__ == '__main__':
+    import asyncio
+    
+    redistributor = TaskRedistributorAgent()
+    
+    result = asyncio.run(redistributor.redistribute_workload(
+        high_risk_provider='PROV0001',
+        available_providers=['PROV0005', 'PROV0012']
+    ))
+    
+    print(f"Redistribution Result: {result}")
