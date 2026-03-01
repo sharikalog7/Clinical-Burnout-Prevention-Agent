@@ -175,9 +175,7 @@ python evaluation/evaluate_system.py
 
 ---
 
-## 🎥 Demo Video
 
-[Watch on YouTube (Under 3 min)](https://youtube.com/your-video-link)
 
 ---
 
